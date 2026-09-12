@@ -17,62 +17,123 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type DeletionPolicy string
+
+type Provider string
+
+const (
+	ConditionTypeReady        = "Ready"
+	ConditionTypeDecrypted    = "Decrypted"
+	ConditionTypeTargetSynced = "TargetSynced"
+
+	DeletionPolicyDelete DeletionPolicy = "Delete"
+	DeletionPolicyRetain DeletionPolicy = "Retain"
+
+	ReasonReconciled   = "Reconciled"
+	ReasonSyncing      = "Syncing"
+	ReasonDecryptError = "DecryptError"
+	ReasonApplyFailed  = "ApplyFailed"
+	ReasonMissingKey   = "MissingKey"
+
+	ProviderPGP   Provider = "pgp"
+	ProviderAge   Provider = "age"
+	ProviderKMS   Provider = "kms"
+	ProviderVault Provider = "vault"
+
+	DefaultPGPKeyName = "pgp.key"
+)
+
+type SecretKeySelector struct {
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// +optional
+	Namespace *string `json:"namespace,omitempty"`
+
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
+}
+
+type PGPConfig struct {
+	// +kubebuilder:validation:Required
+	KeyRef SecretKeySelector `json:"keyRef"`
+
+	PassphraseRef *SecretKeySelector `json:"passphraseRef,omitempty"`
+}
+
+// +kubebuilder:validation:MaxProperties=1
+// +kubebuilder:validation:MinProperties=1
+type DecryptionSource struct {
+	PGP *PGPConfig `json:"pgp,omitempty"`
+
+	// Age *AgeConfig `json:"age,omitempty"`
+
+	// KMS *KMSConfig `json:"kms,omitempty"`
+
+	// Vault *VaultConfig `json:"vault,omitempty"`
+}
 
 // SopsSecretSpec defines the desired state of SopsSecret
 type SopsSecretSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-
-	// foo is an example field of SopsSecret. Edit sopssecret_types.go to remove/update
-	// +optional
-	Foo *string `json:"foo,omitempty"`
+	// +kubebuilder:validation:Required
+	Decryption DecryptionSource `json:"decryption"`
 }
 
 // SopsSecretStatus defines the observed state of SopsSecret.
 type SopsSecretStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the SopsSecret resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
-	// +listType=map
-	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// +optional
+	Provider Provider `json:"provider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Namespace",type="string",JSONPath=".metadata.namespace",priority=1
+// +kubebuilder:printcolumn:name="Provider",type="string",JSONPath=".status.provider",priority=1
+// +kubebuilder:printcolumn:name="Decrypted",type=string,JSONPath=`.status.conditions[?(@.type=="Decrypted")].status`,priority=1
+// +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.status.conditions[?(@.type=="TargetSynced")].status`,priority=1
+// +kubebuilder:printcolumn:name="OnDelete",type="string",JSONPath=".deletionPolicy",priority=1
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // SopsSecret is the Schema for the sopssecrets API
 type SopsSecret struct {
 	metav1.TypeMeta `json:",inline"`
 
-	// metadata is a standard object metadata
+	// metadata is the standard object metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of SopsSecret
+	// spec defines the decryption source and other configuration for the SopsSecret
 	// +required
 	Spec SopsSecretSpec `json:"spec"`
+
+	Data       map[string]string `json:"data,omitempty"`
+	StringData map[string]string `json:"stringData,omitempty"`
+	Immutable  *bool             `json:"immutable,omitempty"`
+
+	// +kubebuilder:default=Opaque
+	Type corev1.SecretType `json:"type,omitempty"`
+
+	// +kubebuilder:validation:Enum=Delete;Retain
+	// +kubebuilder:default=Delete
+	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
+
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	// +optional
+	Sops *apiextensionsv1.JSON `json:"sops,omitempty"`
 
 	// status defines the observed state of SopsSecret
 	// +optional
