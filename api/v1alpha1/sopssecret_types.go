@@ -29,17 +29,17 @@ type Provider string
 
 const (
 	ConditionTypeReady        = "Ready"
-	ConditionTypeDecrypted    = "Decrypted"
-	ConditionTypeTargetSynced = "TargetSynced"
+	ConditionTypeKeyAvailable = "KeyAvailable"
+	ConditionTypeSecretSynced = "SecretSynced"
 
 	DeletionPolicyDelete DeletionPolicy = "Delete"
 	DeletionPolicyRetain DeletionPolicy = "Retain"
 
-	ReasonReconciled   = "Reconciled"
-	ReasonSyncing      = "Syncing"
-	ReasonDecryptError = "DecryptError"
-	ReasonApplyFailed  = "ApplyFailed"
-	ReasonMissingKey   = "MissingKey"
+	ReasonReconciled           = "Reconciled"
+	ReasonDecryptError         = "DecryptError"
+	ReasonApplyFailed          = "ApplyFailed"
+	ReasonMissingKey           = "MissingKey"
+	ReasonProviderNotSupported = "ProviderNotSupported"
 
 	ProviderPGP   Provider = "pgp"
 	ProviderAge   Provider = "age"
@@ -100,8 +100,8 @@ type SopsSecretStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Namespace",type="string",JSONPath=".metadata.namespace",priority=1
 // +kubebuilder:printcolumn:name="Provider",type="string",JSONPath=".status.provider",priority=1
-// +kubebuilder:printcolumn:name="Decrypted",type=string,JSONPath=`.status.conditions[?(@.type=="Decrypted")].status`,priority=1
-// +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.status.conditions[?(@.type=="TargetSynced")].status`,priority=1
+// +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.status.conditions[?(@.type=="KeyAvailable")].status`,priority=1
+// +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.status.conditions[?(@.type=="SecretSynced")].status`,priority=1
 // +kubebuilder:printcolumn:name="OnDelete",type="string",JSONPath=".deletionPolicy",priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].reason`
