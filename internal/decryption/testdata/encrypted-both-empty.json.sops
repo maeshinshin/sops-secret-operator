@@ -1,0 +1,17 @@
+{
+	"stringData": {},
+	"data": {},
+	"sops": {
+		"lastmodified": "2026-09-13T09:33:00Z",
+		"mac": "ENC[AES256_GCM,data:f9D8wS6Ua9detmgnywE6ku/xQfPem2bQsCYWV5kboh1VlwZevxevQpeGhecyaWVTnp02zqh/T/sX8m315wbOcANwbP5mtwB5tesgZgYwNdxTLTbXCfHDp3RMpCReIav64BzLs6aM3AZnokS7ETPM/49+aIf5frmgePtNp165tx0=,iv:deV/F+ll28ThJCLr7VEjRPxTvIHETDI+++RIaBy0QVw=,tag:RDDyFMiVUUAtwXTNjWyWYA==,type:str]",
+		"pgp": [
+			{
+				"created_at": "2026-09-13T09:33:00Z",
+				"enc": "-----BEGIN PGP MESSAGE-----\n\nhF4DuUWgaxBRj2cSAQdAMrF8zTyE/4MSazWxQ6PgtLmwLvDrRKimMYN8hj1FNTow\n5WV3ZG9b19JltvgV7IqtnqCY4vqjqd6SI7/5qnFqjkU+X5RDOeUsbv6lH0p4NlOc\n0l4BjpxtoZAvHsY7DBXlF4VCU3SLwtU+PFUUi8ipSVCPBw9RD2Xu9HtBvbFGAgHD\nFEbBcg8cP8DDSIoHiTKL34a0Fvl5mlR0wndPLE94FNvAM1FLjQyj9vOD/Na5u/Z/\n=MYmR\n-----END PGP MESSAGE-----",
+				"fp": "7ADDBB3E665716BE6BAF765F449C58F426FEA633"
+			}
+		],
+		"unencrypted_suffix": "_unencrypted",
+		"version": "3.13.3"
+	}
+}

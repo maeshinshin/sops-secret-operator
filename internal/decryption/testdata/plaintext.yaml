@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+  namespace: default
+stringData:
+  password: my-secret-password
+  api-key: sk-test-1234567890
+data:
+  config: YmFzZTY0LWVuY29kZWQ=
