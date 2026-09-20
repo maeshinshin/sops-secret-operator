@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,20 +38,73 @@ type SopsSecretReconciler struct {
 // +kubebuilder:rbac:groups=sops.maesh.dev,resources=sopssecrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sops.maesh.dev,resources=sopssecrets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sops.maesh.dev,resources=sopssecrets/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the SopsSecret object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
+// Reconcile implements the main reconciliation loop.
 //
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.24.1/pkg/reconcile
+// Logging convention:
+//   - logger.Info:    significant lifecycle events (reconcile start/end)
+//   - logger.V(1).Info: verbose details for debugging
+//   - logger.Error:  failures, with structured context
+//   - messages are lowercase, no trailing period
 func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	logger := logf.FromContext(ctx).WithValues("sopssecret", req.NamespacedName)
 
-	// TODO(user): your logic here
+	ss := &sopsv1alpha1.SopsSecret{}
+	if err := r.Get(ctx, req.NamespacedName, ss); err != nil {
+		logger.Error(err, "fetching SopsSecret")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	logger.V(1).Info("reconciling SopsSecret", "generation", ss.Generation)
+
+	decryptor, err := r.newDecryptor(ctx, ss)
+	if err != nil {
+		logger.Error(err, "creating decryptor")
+		r.setKeyAvailableCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonDecryptError, err.Error())
+		r.setReadyCondition(ss)
+		if statusErr := r.applyStatus(ctx, ss); statusErr != nil {
+			logger.Error(statusErr, "updating status")
+		}
+		return ctrl.Result{}, err
+	}
+
+	r.setKeyAvailableCondition(ss, metav1.ConditionTrue, sopsv1alpha1.ReasonReconciled, "credentials loaded")
+	logger.Info("decryptor ready", "provider", decryptor.Provider())
+
+	var sopsRaw []byte
+	if ss.Sops != nil {
+		sopsRaw = ss.Sops.Raw
+	}
+	decrypted, err := decryptor.Decrypt(ctx, sopsRaw, ss.Data, ss.StringData)
+	if err != nil {
+		logger.Error(err, "decrypting sops data")
+		r.setSecretSyncedCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonDecryptError, err.Error())
+		r.setReadyCondition(ss)
+		if statusErr := r.applyStatus(ctx, ss); statusErr != nil {
+			logger.Error(statusErr, "updating status")
+		}
+		return ctrl.Result{}, err
+	}
+
+	if err := r.applySecret(ctx, ss, decrypted); err != nil {
+		logger.Error(err, "applying secret")
+		r.setSecretSyncedCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonApplyFailed, err.Error())
+		r.setReadyCondition(ss)
+		if statusErr := r.applyStatus(ctx, ss); statusErr != nil {
+			logger.Error(statusErr, "updating status")
+		}
+		return ctrl.Result{}, err
+	}
+
+	r.setSecretSyncedCondition(ss, metav1.ConditionTrue, sopsv1alpha1.ReasonReconciled, "ready to sync (apply in Step 7)")
+	r.setReadyCondition(ss)
+	if err := r.applyStatus(ctx, ss); err != nil {
+		logger.Error(err, "updating status")
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("reconciliation complete", "generation", ss.Generation)
 
 	return ctrl.Result{}, nil
 }
@@ -58,6 +113,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sopsv1alpha1.SopsSecret{}).
+		Owns(&corev1.Secret{}).
 		Named("sopssecret").
 		Complete(r)
 }

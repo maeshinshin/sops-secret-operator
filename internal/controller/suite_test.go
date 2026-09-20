@@ -25,7 +25,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	sopsv1alpha1 "github.com/maeshinshin/sops-secret-operator/api/v1alpha1"
-	// +kubebuilder:scaffold:imports
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to

@@ -40,6 +40,8 @@ const (
 	ReasonApplyFailed          = "ApplyFailed"
 	ReasonMissingKey           = "MissingKey"
 	ReasonProviderNotSupported = "ProviderNotSupported"
+	ReasonKeyUnavailable       = "KeyUnavailable"
+	ReasonSecretNotSynced      = "SecretNotSynced"
 
 	ProviderPGP   Provider = "pgp"
 	ProviderAge   Provider = "age"
