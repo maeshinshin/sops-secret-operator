@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -47,16 +48,16 @@ func (r *SopsSecretReconciler) setSecretSyncedCondition(ss *sopsv1alpha1.SopsSec
 func (r *SopsSecretReconciler) setReadyCondition(ss *sopsv1alpha1.SopsSecret) {
 	ready := metav1.ConditionTrue
 	reason := sopsv1alpha1.ReasonReconciled
-	message := "all components reconciled"
+	message := sopsv1alpha1.MessageAllReconciled
 
 	if !meta.IsStatusConditionPresentAndEqual(ss.Status.Conditions, sopsv1alpha1.ConditionTypeKeyAvailable, metav1.ConditionTrue) {
 		ready = metav1.ConditionFalse
 		reason = sopsv1alpha1.ReasonKeyUnavailable
-		message = "SopsSecret key is unavailable"
+		message = sopsv1alpha1.MessageKeyUnavailable
 	} else if !meta.IsStatusConditionPresentAndEqual(ss.Status.Conditions, sopsv1alpha1.ConditionTypeSecretSynced, metav1.ConditionTrue) {
 		ready = metav1.ConditionFalse
 		reason = sopsv1alpha1.ReasonSecretNotSynced
-		message = "SopsSecret has not been synced to the target secret"
+		message = sopsv1alpha1.MessageSecretNotSynced
 	}
 
 	meta.SetStatusCondition(&ss.Status.Conditions, metav1.Condition{
@@ -73,4 +74,10 @@ func (r *SopsSecretReconciler) applyStatus(ctx context.Context, ss *sopsv1alpha1
 		return fmt.Errorf("failed to update SopsSecret status: %w", err)
 	}
 	return nil
+}
+
+func (r *SopsSecretReconciler) applyStatusBestEffort(ctx context.Context, ss *sopsv1alpha1.SopsSecret, logger logr.Logger) {
+	if err := r.applyStatus(ctx, ss); err != nil {
+		logger.Error(err, "updating status")
+	}
 }

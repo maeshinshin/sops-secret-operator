@@ -20,14 +20,11 @@ import (
 	"context"
 	"fmt"
 
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
 	sopsv1alpha1 "github.com/maeshinshin/sops-secret-operator/api/v1alpha1"
 	"github.com/maeshinshin/sops-secret-operator/internal/decryption"
 )
 
 func (r *SopsSecretReconciler) newDecryptor(ctx context.Context, ss *sopsv1alpha1.SopsSecret) (decryption.Decryptor, error) {
-	logger := log.FromContext(ctx)
 	dec := ss.Spec.Decryption
 	switch {
 	case dec.PGP != nil:
@@ -37,13 +34,12 @@ func (r *SopsSecretReconciler) newDecryptor(ctx context.Context, ss *sopsv1alpha
 		}
 		return decryption.New(sopsv1alpha1.ProviderPGP, key, passphrase)
 	default:
-		logger.Info("no decryption source configured", "namespace", ss.Namespace, "name", ss.Name)
+		loggerForSopsSecret(ctx, ss).V(1).Info("decryption source not configured")
 		return nil, fmt.Errorf("no decryption source configured for SopsSecret %s/%s", ss.Namespace, ss.Name)
 	}
 }
 
 func (r *SopsSecretReconciler) loadPGPCredentials(ctx context.Context, ss *sopsv1alpha1.SopsSecret) (key, passphrase []byte, err error) {
-	logger := log.FromContext(ctx)
 	pgp := ss.Spec.Decryption.PGP
 	if pgp == nil {
 		return nil, nil, nil
@@ -54,7 +50,7 @@ func (r *SopsSecretReconciler) loadPGPCredentials(ctx context.Context, ss *sopsv
 	if passphrase, err = r.loadSecretKeyData(ctx, ss.Namespace, pgp.PassphraseRef); err != nil {
 		return
 	}
-	logger.V(1).Info("loaded PGP credentials", "keyLength", len(key), "passphraseLength", len(passphrase))
+	loggerForSopsSecret(ctx, ss).V(1).Info("loaded PGP credentials", "keyLength", len(key), "passphraseLength", len(passphrase))
 	return
 }
 

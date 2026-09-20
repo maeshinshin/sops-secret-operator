@@ -43,6 +43,12 @@ const (
 	ReasonKeyUnavailable       = "KeyUnavailable"
 	ReasonSecretNotSynced      = "SecretNotSynced"
 
+	MessageCredentialsLoaded = "credentials loaded"
+	MessageSecretApplied     = "secret applied"
+	MessageAllReconciled     = "all components reconciled"
+	MessageKeyUnavailable    = "SopsSecret key is unavailable"
+	MessageSecretNotSynced   = "SopsSecret has not been synced to the target secret"
+
 	ProviderPGP   Provider = "pgp"
 	ProviderAge   Provider = "age"
 	ProviderKMS   Provider = "kms"

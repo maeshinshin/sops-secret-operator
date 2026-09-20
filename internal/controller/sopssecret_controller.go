@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	sopsv1alpha1 "github.com/maeshinshin/sops-secret-operator/api/v1alpha1"
 )
@@ -40,22 +39,13 @@ type SopsSecretReconciler struct {
 // +kubebuilder:rbac:groups=sops.maesh.dev,resources=sopssecrets/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile implements the main reconciliation loop.
-//
-// Logging convention:
-//   - logger.Info:    significant lifecycle events (reconcile start/end)
-//   - logger.V(1).Info: verbose details for debugging
-//   - logger.Error:  failures, with structured context
-//   - messages are lowercase, no trailing period
 func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := logf.FromContext(ctx).WithValues("sopssecret", req.NamespacedName)
-
 	ss := &sopsv1alpha1.SopsSecret{}
 	if err := r.Get(ctx, req.NamespacedName, ss); err != nil {
-		logger.Error(err, "fetching SopsSecret")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	logger := loggerForSopsSecret(ctx, ss)
 	logger.V(1).Info("reconciling SopsSecret", "generation", ss.Generation)
 
 	decryptor, err := r.newDecryptor(ctx, ss)
@@ -63,13 +53,11 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.Error(err, "creating decryptor")
 		r.setKeyAvailableCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonDecryptError, err.Error())
 		r.setReadyCondition(ss)
-		if statusErr := r.applyStatus(ctx, ss); statusErr != nil {
-			logger.Error(statusErr, "updating status")
-		}
+		r.applyStatusBestEffort(ctx, ss, logger)
 		return ctrl.Result{}, err
 	}
 
-	r.setKeyAvailableCondition(ss, metav1.ConditionTrue, sopsv1alpha1.ReasonReconciled, "credentials loaded")
+	r.setKeyAvailableCondition(ss, metav1.ConditionTrue, sopsv1alpha1.ReasonReconciled, sopsv1alpha1.MessageCredentialsLoaded)
 	logger.Info("decryptor ready", "provider", decryptor.Provider())
 
 	var sopsRaw []byte
@@ -81,9 +69,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.Error(err, "decrypting sops data")
 		r.setSecretSyncedCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonDecryptError, err.Error())
 		r.setReadyCondition(ss)
-		if statusErr := r.applyStatus(ctx, ss); statusErr != nil {
-			logger.Error(statusErr, "updating status")
-		}
+		r.applyStatusBestEffort(ctx, ss, logger)
 		return ctrl.Result{}, err
 	}
 
@@ -91,13 +77,11 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.Error(err, "applying secret")
 		r.setSecretSyncedCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonApplyFailed, err.Error())
 		r.setReadyCondition(ss)
-		if statusErr := r.applyStatus(ctx, ss); statusErr != nil {
-			logger.Error(statusErr, "updating status")
-		}
+		r.applyStatusBestEffort(ctx, ss, logger)
 		return ctrl.Result{}, err
 	}
 
-	r.setSecretSyncedCondition(ss, metav1.ConditionTrue, sopsv1alpha1.ReasonReconciled, "ready to sync (apply in Step 7)")
+	r.setSecretSyncedCondition(ss, metav1.ConditionTrue, sopsv1alpha1.ReasonReconciled, sopsv1alpha1.MessageSecretApplied)
 	r.setReadyCondition(ss)
 	if err := r.applyStatus(ctx, ss); err != nil {
 		logger.Error(err, "updating status")
@@ -109,7 +93,6 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *SopsSecretReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sopsv1alpha1.SopsSecret{}).

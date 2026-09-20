@@ -33,9 +33,7 @@ import (
 )
 
 func (r *SopsSecretReconciler) applySecret(ctx context.Context, ss *sopsv1alpha1.SopsSecret, decrypted *decryption.Decrypted) error {
-	logger := log.FromContext(ctx).WithValues(
-		"sopssecret", types.NamespacedName{Namespace: ss.Namespace, Name: ss.Name},
-	)
+	logger := loggerForSopsSecret(ctx, ss)
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -79,9 +77,7 @@ func (r *SopsSecretReconciler) applySecret(ctx context.Context, ss *sopsv1alpha1
 		return fmt.Errorf("creating or updating secret: %w", err)
 	}
 
-	if op != controllerutil.OperationResultNone {
-		logger.Info("secret applied", "operation", string(op))
-	}
+	logger.Info("secret applied", "operation", string(op))
 
 	return nil
 }
