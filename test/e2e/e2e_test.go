@@ -231,6 +231,31 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyMetricsServerStarted, 3*time.Minute, time.Second).Should(Succeed())
 
+			By("waiting for the webhook service endpoints to be ready")
+			verifyWebhookEndpointsReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "endpointslices.discovery.k8s.io", "-n", namespace,
+					"-l", "kubernetes.io/service-name=sops-secret-operator-webhook-service",
+					"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Webhook endpoints should exist")
+				g.Expect(output).ShouldNot(BeEmpty(), "Webhook endpoints not yet ready")
+			}
+			Eventually(verifyWebhookEndpointsReady, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying the validating webhook server is ready")
+			verifyValidatingWebhookReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "validatingwebhookconfigurations.admissionregistration.k8s.io",
+					"sops-secret-operator-validating-webhook-configuration",
+					"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "ValidatingWebhookConfiguration should exist")
+				g.Expect(output).ShouldNot(BeEmpty(), "Validating webhook CA bundle not yet injected")
+			}
+			Eventually(verifyValidatingWebhookReady, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("waiting additional time for webhook server to stabilize")
+			time.Sleep(5 * time.Second)
+
 			// +kubebuilder:scaffold:e2e-metrics-webhooks-readiness
 
 			By("creating the curl-metrics pod to access the metrics endpoint")
@@ -285,6 +310,30 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
+		})
+
+		It("should provisioned cert-manager", func() {
+			By("validating that cert-manager has the certificate Secret")
+			verifyCertManager := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secrets", "webhook-server-cert", "-n", namespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			Eventually(verifyCertManager).Should(Succeed())
+		})
+
+		It("should have CA injection for validating webhooks", func() {
+			By("checking CA injection for validating webhooks")
+			verifyCAInjection := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get",
+					"validatingwebhookconfigurations.admissionregistration.k8s.io",
+					"sops-secret-operator-validating-webhook-configuration",
+					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
+				vwhOutput, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(vwhOutput)).To(BeNumerically(">", 10))
+			}
+			Eventually(verifyCAInjection).Should(Succeed())
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
@@ -432,6 +481,69 @@ var _ = Describe("Manager", Ordered, func() {
 
 			Eventually(func() bool { return secretExists(ssName) }, 2*time.Minute).Should(BeFalse(),
 				"target Secret must be cascade-deleted via OwnerReference")
+		})
+
+		It("rejects SopsSecret creation by a user without get permission on the referenced Secret", func() {
+			keyName := "e2e-pgp-key-webhook"
+			ssName := "e2e-sopssecret-webhook"
+			targetNS := "e2e-webhook-target"
+			saName := "alice"
+			targetSecretName := "tenant-secret"
+
+			runKubectl := func(args ...string) string {
+				cmd := exec.Command("kubectl", args...)
+				out, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "kubectl %v failed", args)
+				return out
+			}
+
+			runKubectl("create", "ns", targetNS)
+			DeferCleanup(func() {
+				exec.Command("kubectl", "delete", "ns", targetNS, "--ignore-not-found").Run()
+			})
+
+			runKubectl("create", "secret", "generic", targetSecretName,
+				"-n", targetNS, "--from-literal=key=value")
+			runKubectl("create", "sa", saName, "-n", "default")
+			DeferCleanup(func() {
+				exec.Command("kubectl", "delete", "sa", saName, "-n", "default", "--ignore-not-found").Run()
+			})
+
+			keyYAML := strings.Replace(loadSample("pgp-key.yaml"), "name: pgp-key", fmt.Sprintf("name: %s", keyName), 1)
+			ssYAML := strings.ReplaceAll(loadSample("sops_v1alpha1_sopssecret.yaml"), "name: sopssecret-sample", fmt.Sprintf("name: %s", ssName))
+			ssYAML = strings.ReplaceAll(ssYAML, "name: pgp-key", fmt.Sprintf("name: %s", keyName))
+			ssYAML = strings.Replace(ssYAML,
+				fmt.Sprintf("name: %s", keyName),
+				fmt.Sprintf("name: %s\n                namespace: %s", keyName, targetNS),
+				1)
+			bundle := keyYAML + "\n---\n" + ssYAML
+
+			tmp, err := os.CreateTemp("", "e2e-bundle-*.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			defer os.Remove(tmp.Name())
+			_, err = tmp.WriteString(bundle)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tmp.Close()).To(Succeed())
+
+			cmd := exec.Command("kubectl", "apply", "-f", tmp.Name())
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "bundle apply should succeed as cluster admin")
+			DeferCleanup(func() {
+				exec.Command("kubectl", "delete", "-f", tmp.Name(), "--ignore-not-found").Run()
+			})
+
+			applyAs := exec.Command("kubectl", "apply", "-f", tmp.Name(),
+				"--as", fmt.Sprintf("system:serviceaccount:default:%s", saName),
+				"--as-group", "system:authenticated")
+			out, err := utils.Run(applyAs)
+			Expect(err).To(HaveOccurred(), "webhook should reject: %s", out)
+			Expect(out).To(MatchRegexp(`(?i)not authorized|denied|forbidden|webhook`))
+
+			saCmd := exec.Command("kubectl", "get", "sopssecret", ssName, "-n", "default",
+				"--as", fmt.Sprintf("system:serviceaccount:default:%s", saName),
+				"--as-group", "system:authenticated")
+			_, err = utils.Run(saCmd)
+			Expect(err).To(HaveOccurred(), "the SopsSecret must not have been created by alice")
 		})
 	})
 })
