@@ -143,7 +143,7 @@ var _ = Describe("SopsSecret Controller", func() {
 		})
 	})
 
-	Context("When DeletionPolicy=Delete (default) is set with valid key", func() {
+	Context("When DeletionPolicy=Delete (default) is set with invalid key", func() {
 		var pgpKey *corev1.Secret
 		var sopssecret *sopsv1alpha1.SopsSecret
 
