@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -174,13 +175,31 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		It("should ensure the metrics endpoint is serving metrics", func() {
+			DeferCleanup(func() {
+				By("cleaning up the metrics ClusterRoleBinding")
+				cmd := exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName, "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+			})
+
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
-			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=sops-secret-operator-metrics-reader",
-				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
-			)
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(fmt.Sprintf(`{
+				"apiVersion": "rbac.authorization.k8s.io/v1",
+				"kind": "ClusterRoleBinding",
+				"metadata": {"name": %q},
+				"roleRef": {
+					"apiGroup": "rbac.authorization.k8s.io",
+					"kind": "ClusterRole",
+					"name": "sops-secret-operator-metrics-reader"
+				},
+				"subjects": [{
+					"kind": "ServiceAccount",
+					"name": %q,
+					"namespace": %q
+				}]
+			}`, metricsRoleBindingName, serviceAccountName, namespace))
 			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterRoleBinding")
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply ClusterRoleBinding")
 
 			By("validating that the metrics service is available")
 			cmd = exec.Command("kubectl", "get", "service", metricsServiceName, "-n", namespace)
@@ -279,6 +298,151 @@ var _ = Describe("Manager", Ordered, func() {
 		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
 		//    strings.ToLower(<Kind>),
 		// ))
+	})
+
+	Context("SopsSecret", func() {
+		samplesDir, err := filepath.Abs(filepath.Join("..", "..", "config", "samples"))
+		Expect(err).NotTo(HaveOccurred())
+
+		loadSample := func(name string) string {
+			data, err := os.ReadFile(filepath.Join(samplesDir, name))
+			Expect(err).NotTo(HaveOccurred(), "Failed to read sample %s", name)
+			return string(data)
+		}
+
+		applyYAML := func(yaml string) {
+			tmp, err := os.CreateTemp("", "e2e-*.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			defer os.Remove(tmp.Name())
+			_, err = tmp.WriteString(yaml)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tmp.Close()).To(Succeed())
+			cmd := exec.Command("kubectl", "apply", "-f", tmp.Name())
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply YAML")
+		}
+
+		cleanupYAML := func(yaml string) {
+			tmp, err := os.CreateTemp("", "e2e-*.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			defer os.Remove(tmp.Name())
+			_, err = tmp.WriteString(yaml)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tmp.Close()).To(Succeed())
+			cmd := exec.Command("kubectl", "delete", "--ignore-not-found", "-f", tmp.Name())
+			_, _ = utils.Run(cmd)
+		}
+
+		sopsSecretCond := func(name, condType string) string {
+			cmd := exec.Command("kubectl", "get", "sopssecret", name, "-n", "default",
+				"-o", fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].status}", condType))
+			out, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			return out
+		}
+
+		secretExists := func(name string) bool {
+			cmd := exec.Command("kubectl", "get", "secret", name, "-n", "default")
+			_, err := utils.Run(cmd)
+			return err == nil
+		}
+
+		secretOwnerKind := func(name string) string {
+			cmd := exec.Command("kubectl", "get", "secret", name, "-n", "default",
+				"-o", "jsonpath={.metadata.ownerReferences[0].kind}")
+			out, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			return out
+		}
+
+		It("creates the target Secret on happy path", func() {
+			keyName := "e2e-pgp-key-happy"
+			ssName := "e2e-sopssecret-happy"
+
+			keyYAML := strings.Replace(loadSample("pgp-key.yaml"), "name: pgp-key", fmt.Sprintf("name: %s", keyName), 1)
+			ssYAML := strings.ReplaceAll(loadSample("sops_v1alpha1_sopssecret.yaml"), "name: sopssecret-sample", fmt.Sprintf("name: %s", ssName))
+			ssYAML = strings.ReplaceAll(ssYAML, "name: pgp-key", fmt.Sprintf("name: %s", keyName))
+			bundle := keyYAML + "\n---\n" + ssYAML
+
+			applyYAML(bundle)
+			defer cleanupYAML(bundle)
+
+			Eventually(func() string { return sopsSecretCond(ssName, "Ready") }, 2*time.Minute).Should(Equal("True"))
+			Expect(secretExists(ssName)).To(BeTrue(), "target Secret should exist")
+		})
+
+		It("reports SecretSynced=False when sops data cannot be decrypted", func() {
+			keyName := "e2e-pgp-key-decrypt"
+			ssName := "e2e-sopssecret-decrypt"
+
+			keyYAML := strings.Replace(loadSample("pgp-key.yaml"), "name: pgp-key", fmt.Sprintf("name: %s", keyName), 1)
+			ssYAML := strings.ReplaceAll(loadSample("sops_v1alpha1_sopssecret.yaml"), "name: sopssecret-sample", fmt.Sprintf("name: %s", ssName))
+			ssYAML = strings.ReplaceAll(ssYAML, "name: pgp-key", fmt.Sprintf("name: %s", keyName))
+			ssYAML = strings.Replace(ssYAML,
+				"secret-password: ENC[AES256_GCM,data:anKXwdg4OUYlVVyF",
+				"secret-password: not-an-enc-value",
+				1)
+			bundle := keyYAML + "\n---\n" + ssYAML
+
+			applyYAML(bundle)
+			defer cleanupYAML(bundle)
+
+			Eventually(func() string { return sopsSecretCond(ssName, "KeyAvailable") }, 2*time.Minute).Should(Equal("True"))
+			Eventually(func() string { return sopsSecretCond(ssName, "SecretSynced") }, 2*time.Minute).Should(Equal("False"))
+			Expect(secretExists(ssName)).To(BeFalse(), "target Secret must not be created on decrypt failure")
+		})
+
+		It("retains the target Secret after SopsSecret deletion when DeletionPolicy=Retain", func() {
+			keyName := "e2e-pgp-key-retain"
+			ssName := "e2e-sopssecret-retain"
+
+			keyYAML := strings.Replace(loadSample("pgp-key.yaml"), "name: pgp-key", fmt.Sprintf("name: %s", keyName), 1)
+			ssYAML := strings.ReplaceAll(loadSample("sops_v1alpha1_sopssecret.yaml"), "name: sopssecret-sample", fmt.Sprintf("name: %s", ssName))
+			ssYAML = strings.ReplaceAll(ssYAML, "name: pgp-key", fmt.Sprintf("name: %s", keyName))
+			ssYAML = strings.Replace(ssYAML, "    namespace: default\nspec:", "    namespace: default\ndeletionPolicy: Retain\nspec:", 1)
+			bundle := keyYAML + "\n---\n" + ssYAML
+
+			applyYAML(bundle)
+			defer cleanupYAML(bundle)
+
+			Eventually(func() string { return sopsSecretCond(ssName, "Ready") }, 2*time.Minute).Should(Equal("True"))
+			Expect(secretOwnerKind(ssName)).To(BeEmpty(), "OwnerReference must not be set with DeletionPolicy=Retain")
+
+			Expect(secretExists(ssName)).To(BeTrue())
+
+			cmd := exec.Command("kubectl", "delete", "sopssecret", ssName, "-n", "default", "--wait=true")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete SopsSecret")
+
+			Consistently(func() bool { return secretExists(ssName) }, 30*time.Second).Should(BeTrue(),
+				"target Secret must remain after SopsSecret deletion")
+
+			cmd = exec.Command("kubectl", "delete", "secret", ssName, "-n", "default", "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("cascade-deletes the target Secret when DeletionPolicy=Delete (default)", func() {
+			keyName := "e2e-pgp-key-cascade"
+			ssName := "e2e-sopssecret-cascade"
+
+			keyYAML := strings.Replace(loadSample("pgp-key.yaml"), "name: pgp-key", fmt.Sprintf("name: %s", keyName), 1)
+			ssYAML := strings.ReplaceAll(loadSample("sops_v1alpha1_sopssecret.yaml"), "name: sopssecret-sample", fmt.Sprintf("name: %s", ssName))
+			ssYAML = strings.ReplaceAll(ssYAML, "name: pgp-key", fmt.Sprintf("name: %s", keyName))
+			bundle := keyYAML + "\n---\n" + ssYAML
+
+			applyYAML(bundle)
+			defer cleanupYAML(bundle)
+
+			Eventually(func() string { return sopsSecretCond(ssName, "Ready") }, 2*time.Minute).Should(Equal("True"))
+			Expect(secretOwnerKind(ssName)).To(Equal("SopsSecret"), "OwnerReference must be set for cascade deletion")
+
+			cmd := exec.Command("kubectl", "delete", "sopssecret", ssName, "-n", "default", "--wait=true")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete SopsSecret")
+
+			Eventually(func() bool { return secretExists(ssName) }, 2*time.Minute).Should(BeFalse(),
+				"target Secret must be cascade-deleted via OwnerReference")
+		})
 	})
 })
 
