@@ -29,6 +29,12 @@ import (
 	sopsv1alpha1 "github.com/maeshinshin/sops-secret-operator/api/v1alpha1"
 )
 
+const (
+	secretsResource = "secrets"
+	getVerb         = "get"
+	rbacAPIGroup    = "rbac.authorization.k8s.io"
+)
+
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -74,8 +80,8 @@ func (v *SopsSecretCustomValidator) validateSecretRefs(ctx context.Context, obj 
 			Spec: authzv1.SubjectAccessReviewSpec{
 				ResourceAttributes: &authzv1.ResourceAttributes{
 					Namespace: ns,
-					Verb:      "get",
-					Resource:  "secrets",
+					Verb:      getVerb,
+					Resource:  secretsResource,
 					Name:      ref.Name,
 				},
 				User:   req.UserInfo.Username,

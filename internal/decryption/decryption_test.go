@@ -26,6 +26,12 @@ import (
 	sopsv1alpha1 "github.com/maeshinshin/sops-secret-operator/api/v1alpha1"
 )
 
+const (
+	emptyDecryptedName = "empty"
+	bothDecryptedName  = "both"
+	nilDecryptedName   = "nil"
+)
+
 func TestNew(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -184,10 +190,9 @@ func TestNew_ErrorWrapsErrUnsupported(t *testing.T) {
 
 func TestErrUnsupported_AsError(t *testing.T) {
 	original := ErrUnsupported
-	wrapped := error(original)
 
-	if wrapped.Error() != original.Error() {
-		t.Errorf("wrapped = %q, want %q", wrapped.Error(), original.Error())
+	if original.Error() != ErrUnsupported.Error() {
+		t.Errorf("got %q, want %q", original.Error(), ErrUnsupported.Error())
 	}
 }
 
@@ -196,10 +201,10 @@ func TestDecrypted_StructFields(t *testing.T) {
 		name string
 		d    Decrypted
 	}{
-		{name: "empty", d: Decrypted{}},
+		{name: emptyDecryptedName, d: Decrypted{}},
 		{name: "data only", d: Decrypted{Data: map[string]string{"k": "v"}}},
 		{name: "stringData only", d: Decrypted{StringData: map[string]string{"k": "v"}}},
-		{name: "both", d: Decrypted{
+		{name: bothDecryptedName, d: Decrypted{
 			Data:       map[string]string{"a": "1"},
 			StringData: map[string]string{"b": "2"},
 		}},
@@ -217,11 +222,11 @@ func TestDecryptor_Interface(t *testing.T) {
 		name string
 		d    Decryptor
 	}{
-		{name: "nil", d: nil},
+		{name: nilDecryptedName, d: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var _ Decryptor = tt.d
+			_ = tt.d
 			_ = context.TODO()
 		})
 	}

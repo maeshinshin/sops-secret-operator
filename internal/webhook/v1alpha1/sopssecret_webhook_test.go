@@ -59,8 +59,8 @@ var _ = Describe("SopsSecret Webhook Authorization", func() {
 
 	AfterEach(func() {
 		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, secret))).To(Succeed())
-		Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.RoleBinding{}, client.InNamespace(ns)))
-		Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.Role{}, client.InNamespace(ns)))
+		Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.RoleBinding{}, client.InNamespace(ns))).To(Succeed())
+		Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.Role{}, client.InNamespace(ns))).To(Succeed())
 	})
 
 	grant := func(user string, resourceNames ...string) {
@@ -68,17 +68,17 @@ var _ = Describe("SopsSecret Webhook Authorization", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "allow-" + user, Namespace: ns},
 			Rules: []rbacv1.PolicyRule{{
 				APIGroups:     []string{""},
-				Resources:     []string{"secrets"},
+				Resources:     []string{secretsResource},
 				ResourceNames: resourceNames,
-				Verbs:         []string{"get"},
+				Verbs:         []string{getVerb},
 			}},
 		}
 		Expect(k8sClient.Create(ctx, role)).To(Succeed())
 
 		binding := &rbacv1.RoleBinding{
 			ObjectMeta: metav1.ObjectMeta{Name: "allow-" + user, Namespace: ns},
-			Subjects:   []rbacv1.Subject{{Kind: "User", Name: user, APIGroup: "rbac.authorization.k8s.io"}},
-			RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: role.Name, APIGroup: "rbac.authorization.k8s.io"},
+			Subjects:   []rbacv1.Subject{{Kind: "User", Name: user, APIGroup: rbacAPIGroup}},
+			RoleRef:    rbacv1.RoleRef{Kind: "Role", Name: role.Name, APIGroup: rbacAPIGroup},
 		}
 		Expect(k8sClient.Create(ctx, binding)).To(Succeed())
 	}
@@ -131,8 +131,8 @@ var _ = Describe("SopsSecret Webhook Authorization", func() {
 		Expect(k8sClient.Create(ctx, otherSecret)).To(Succeed())
 		DeferCleanup(func() {
 			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, otherSecret))).To(Succeed())
-			Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.RoleBinding{}, client.InNamespace(otherNS)))
-			Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.Role{}, client.InNamespace(otherNS)))
+			Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.RoleBinding{}, client.InNamespace(otherNS))).To(Succeed())
+			Expect(k8sClient.DeleteAllOf(ctx, &rbacv1.Role{}, client.InNamespace(otherNS))).To(Succeed())
 		})
 
 		role := &rbacv1.Role{

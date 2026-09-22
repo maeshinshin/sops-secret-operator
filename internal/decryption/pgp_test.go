@@ -29,10 +29,22 @@ import (
 )
 
 const (
-	testKeyFP       = "7ADDBB3E665716BE6BAF765F449C58F426FEA633"
-	otherKeyFP      = "5F4A4E842F63CA87F28D7F308C247F2B706D388E"
-	passphraseKeyFP = "4326ED081E26332663FE62594484F990D5068F20"
-	testPassphrase  = "test-passphrase-xyz"
+	testKeyFP         = "7ADDBB3E665716BE6BAF765F449C58F426FEA633"
+	otherKeyFP        = "5F4A4E842F63CA87F28D7F308C247F2B706D388E"
+	passphraseKeyFP   = "4326ED081E26332663FE62594484F990D5068F20"
+	testPassphrase    = "test-passphrase-xyz"
+	testKeyFile       = "test-key.asc"
+	otherKeyFile      = "other-key.asc"
+	passphraseKeyFile = "passphrase-key.asc"
+	emptyName         = "empty"
+	nilName           = "nil"
+	passphraseKeyName = "passphrase key"
+	invalidJSON       = "invalid json"
+	invalidJSONRaw    = "{invalid"
+	bothName          = "both"
+	dataValue         = "data-value"
+	secretPassword    = "my-secret-password"
+	passwordField     = "password"
 )
 
 func loadTestKey(t *testing.T, name string) []byte {
@@ -50,8 +62,8 @@ func TestNewPGP_EmptyKey(t *testing.T) {
 		name string
 		key  []byte
 	}{
-		{name: "nil", key: nil},
-		{name: "empty", key: []byte{}},
+		{name: nilName, key: nil},
+		{name: emptyName, key: []byte{}},
 		{name: "whitespace only", key: []byte("   ")},
 		{name: "not armored", key: []byte("not a pgp key")},
 	}
@@ -75,10 +87,10 @@ func TestNewPGP_ValidKey(t *testing.T) {
 		passphrase []byte
 		wantErr    bool
 	}{
-		{name: "test key without passphrase", keyFile: "test-key.asc", passphrase: nil, wantErr: false},
-		{name: "test key with wrong passphrase", keyFile: "test-key.asc", passphrase: []byte("wrong"), wantErr: false},
-		{name: "other key without passphrase", keyFile: "other-key.asc", passphrase: nil, wantErr: false},
-		{name: "passphrase key with correct passphrase", keyFile: "passphrase-key.asc", passphrase: []byte(testPassphrase), wantErr: false},
+		{name: "test key without passphrase", keyFile: testKeyFile, passphrase: nil, wantErr: false},
+		{name: "test key with wrong passphrase", keyFile: testKeyFile, passphrase: []byte("wrong"), wantErr: false},
+		{name: "other key without passphrase", keyFile: otherKeyFile, passphrase: nil, wantErr: false},
+		{name: "passphrase key with correct passphrase", keyFile: passphraseKeyFile, passphrase: []byte(testPassphrase), wantErr: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -100,8 +112,8 @@ func TestNewPGP_PassphraseMissing(t *testing.T) {
 		keyFile  string
 		password []byte
 	}{
-		{name: "encrypted key with nil passphrase", keyFile: "passphrase-key.asc", password: nil},
-		{name: "encrypted key with empty passphrase", keyFile: "passphrase-key.asc", password: []byte{}},
+		{name: "encrypted key with nil passphrase", keyFile: passphraseKeyFile, password: nil},
+		{name: "encrypted key with empty passphrase", keyFile: passphraseKeyFile, password: []byte{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -115,7 +127,7 @@ func TestNewPGP_PassphraseMissing(t *testing.T) {
 }
 
 func TestNewPGP_WrongPassphrase(t *testing.T) {
-	key := loadTestKey(t, "passphrase-key.asc")
+	key := loadTestKey(t, passphraseKeyFile)
 	_, err := NewPGP(key, []byte("wrong-password"))
 	if err == nil {
 		t.Fatal("expected error for wrong passphrase")
@@ -132,9 +144,9 @@ func TestPGP_Provider(t *testing.T) {
 		name    string
 		keyFile string
 	}{
-		{name: "test key", keyFile: "test-key.asc"},
-		{name: "other key", keyFile: "other-key.asc"},
-		{name: "passphrase key", keyFile: "passphrase-key.asc"},
+		{name: "test key", keyFile: testKeyFile},
+		{name: "other key", keyFile: otherKeyFile},
+		{name: passphraseKeyName, keyFile: passphraseKeyFile},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,7 +154,7 @@ func TestPGP_Provider(t *testing.T) {
 			d, err := NewPGP(key, nil)
 			if err != nil {
 				passphrase := []byte(testPassphrase)
-				if tt.keyFile == "passphrase-key.asc" {
+				if tt.keyFile == passphraseKeyFile {
 					d, err = NewPGP(key, passphrase)
 				}
 				if err != nil {
@@ -164,9 +176,9 @@ func TestPGP_Fingerprint(t *testing.T) {
 		want       string
 		wantUpper  string
 	}{
-		{name: "test key", keyFile: "test-key.asc", passphrase: nil, want: testKeyFP},
-		{name: "other key", keyFile: "other-key.asc", passphrase: nil, want: otherKeyFP},
-		{name: "passphrase key", keyFile: "passphrase-key.asc", passphrase: []byte(testPassphrase), want: passphraseKeyFP},
+		{name: "test key", keyFile: testKeyFile, passphrase: nil, want: testKeyFP},
+		{name: "other key", keyFile: otherKeyFile, passphrase: nil, want: otherKeyFP},
+		{name: passphraseKeyName, keyFile: passphraseKeyFile, passphrase: []byte(testPassphrase), want: passphraseKeyFP},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -187,12 +199,12 @@ func TestPGP_Fingerprint(t *testing.T) {
 }
 
 func TestPGP_FingerprintFindsCorrectKey(t *testing.T) {
-	key1 := loadTestKey(t, "test-key.asc")
+	key1 := loadTestKey(t, testKeyFile)
 	d1, err := NewPGP(key1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	key2 := loadTestKey(t, "other-key.asc")
+	key2 := loadTestKey(t, otherKeyFile)
 	d2, err := NewPGP(key2, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +232,7 @@ func TestLoadPrivateKey_InvalidArmored(t *testing.T) {
 		{name: "garbage", data: []byte("garbage data")},
 		{name: "partial armor header", data: []byte("-----BEGIN PGP PRIVATE KEY BLOCK-----\n")},
 		{name: "random binary", data: []byte{0x00, 0x01, 0x02, 0xff, 0xab, 0xcd}},
-		{name: "empty", data: []byte{}},
+		{name: emptyName, data: []byte{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -233,7 +245,7 @@ func TestLoadPrivateKey_InvalidArmored(t *testing.T) {
 }
 
 func TestUnlockDataKey_InvalidArmored(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -258,7 +270,7 @@ func TestUnlockDataKey_InvalidArmored(t *testing.T) {
 }
 
 func TestPGP_Decrypt_NoMatch(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +293,7 @@ func TestPGP_Decrypt_NoMatch(t *testing.T) {
 }
 
 func TestPGP_Decrypt_InvalidSopsRaw(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -291,10 +303,10 @@ func TestPGP_Decrypt_InvalidSopsRaw(t *testing.T) {
 		name string
 		raw  []byte
 	}{
-		{name: "invalid json", raw: []byte(`{invalid`)},
+		{name: invalidJSON, raw: []byte(invalidJSONRaw)},
 		{name: "no pgp", raw: []byte(`{"mac":"m","version":"v"}`)},
-		{name: "empty", raw: []byte{}},
-		{name: "nil", raw: nil},
+		{name: emptyName, raw: []byte{}},
+		{name: nilName, raw: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -307,7 +319,7 @@ func TestPGP_Decrypt_InvalidSopsRaw(t *testing.T) {
 }
 
 func TestPGP_Decrypt_CancelledContext(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -327,7 +339,7 @@ func TestPGP_Decrypt_CancelledContext(t *testing.T) {
 }
 
 func TestPGP_Decrypt_MatchButInvalidEncKey(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +354,7 @@ func TestPGP_Decrypt_MatchButInvalidEncKey(t *testing.T) {
 }
 
 func TestPGP_FingerprintIsUppercase(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -353,7 +365,7 @@ func TestPGP_FingerprintIsUppercase(t *testing.T) {
 		t.Errorf("fingerprint should be uppercase, got %q", fp)
 	}
 	for _, r := range fp {
-		if !((r >= '0' && r <= '9') || (r >= 'A' && r <= 'F')) {
+		if r < '0' || r > '9' && r < 'A' || r > 'F' {
 			t.Errorf("fingerprint should only contain hex chars, got %q", fp)
 		}
 	}
@@ -370,7 +382,7 @@ func TestPGP_KeyInfo(t *testing.T) {
 	}{
 		{
 			name:               "test key (no passphrase)",
-			keyFile:            "test-key.asc",
+			keyFile:            testKeyFile,
 			passphrase:         nil,
 			wantFingerprint:    testKeyFP,
 			wantRequires:       false,
@@ -378,15 +390,15 @@ func TestPGP_KeyInfo(t *testing.T) {
 		},
 		{
 			name:               "other key (no passphrase)",
-			keyFile:            "other-key.asc",
+			keyFile:            otherKeyFile,
 			passphrase:         nil,
 			wantFingerprint:    otherKeyFP,
 			wantRequires:       false,
 			wantUserIDContains: "sops-secret-operator-other-test-key",
 		},
 		{
-			name:               "passphrase key",
-			keyFile:            "passphrase-key.asc",
+			name:               passphraseKeyName,
+			keyFile:            passphraseKeyFile,
 			passphrase:         []byte(testPassphrase),
 			wantFingerprint:    passphraseKeyFP,
 			wantRequires:       true,
@@ -429,9 +441,9 @@ func TestPGP_RequiresPassphrase(t *testing.T) {
 		passphrase []byte
 		want       bool
 	}{
-		{name: "test key without passphrase", keyFile: "test-key.asc", passphrase: nil, want: false},
-		{name: "other key without passphrase", keyFile: "other-key.asc", passphrase: nil, want: false},
-		{name: "passphrase key with correct passphrase", keyFile: "passphrase-key.asc", passphrase: []byte(testPassphrase), want: true},
+		{name: "test key without passphrase", keyFile: testKeyFile, passphrase: nil, want: false},
+		{name: "other key without passphrase", keyFile: otherKeyFile, passphrase: nil, want: false},
+		{name: "passphrase key with correct passphrase", keyFile: passphraseKeyFile, passphrase: []byte(testPassphrase), want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -455,14 +467,14 @@ func TestPGP_RequiresPassphrase_NilSafe(t *testing.T) {
 }
 
 func TestPGP_KeyInfo_WrongPassphraseDoesNotChangeRequiresFlag(t *testing.T) {
-	key := loadTestKey(t, "passphrase-key.asc")
+	key := loadTestKey(t, passphraseKeyFile)
 	if _, err := NewPGP(key, []byte("wrong-passphrase")); err == nil {
 		t.Fatal("expected error for wrong passphrase")
 	}
 }
 
 func TestPGP_KeyInfo_DetectsEncryptedKey(t *testing.T) {
-	key := loadTestKey(t, "passphrase-key.asc")
+	key := loadTestKey(t, passphraseKeyFile)
 	_, err := NewPGP(key, []byte(testPassphrase))
 	if err != nil {
 		t.Fatalf("NewPGP with correct passphrase failed: %v", err)
@@ -501,7 +513,7 @@ func loadEncryptedFixture(t *testing.T, name string) (sopsRaw []byte, data, stri
 }
 
 func TestPGP_Decrypt_WithCorrectKey(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -514,8 +526,8 @@ func TestPGP_Decrypt_WithCorrectKey(t *testing.T) {
 	}
 
 	wantString := map[string]string{
-		"password": "my-secret-password",
-		"api-key":  "sk-test-1234567890",
+		passwordField: secretPassword,
+		"api-key":     "sk-test-1234567890",
 	}
 	for k, v := range wantString {
 		if got.StringData[k] != v {
@@ -528,7 +540,7 @@ func TestPGP_Decrypt_WithCorrectKey(t *testing.T) {
 }
 
 func TestPGP_Decrypt_WithWrongKey(t *testing.T) {
-	key := loadTestKey(t, "other-key.asc")
+	key := loadTestKey(t, otherKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -545,7 +557,7 @@ func TestPGP_Decrypt_WithWrongKey(t *testing.T) {
 }
 
 func TestPGP_Decrypt_MultiKeyRecipient(t *testing.T) {
-	testKey := loadTestKey(t, "test-key.asc")
+	testKey := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(testKey, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -556,13 +568,13 @@ func TestPGP_Decrypt_MultiKeyRecipient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decrypt multi-key with test key: %v", err)
 	}
-	if got.StringData["password"] != "my-secret-password" {
-		t.Errorf("password = %q, want %q", got.StringData["password"], "my-secret-password")
+	if got.StringData[passwordField] != secretPassword {
+		t.Errorf("password = %q, want %q", got.StringData[passwordField], secretPassword)
 	}
 }
 
 func TestPGP_Decrypt_EmptyMaps(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -573,11 +585,8 @@ func TestPGP_Decrypt_EmptyMaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decrypt: %v", err)
 	}
-	if got == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if len(got.Data) != 0 {
-		t.Errorf("expected empty Data, got %d entries", len(got.Data))
+	if got.Data != nil {
+		t.Errorf("expected nil Data, got %d entries", len(got.Data))
 	}
 	if len(got.StringData) != 0 {
 		t.Errorf("expected empty StringData, got %d entries", len(got.StringData))
@@ -585,7 +594,7 @@ func TestPGP_Decrypt_EmptyMaps(t *testing.T) {
 }
 
 func TestPGP_Decrypt_ResultHasCorrectType(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -599,11 +608,11 @@ func TestPGP_Decrypt_ResultHasCorrectType(t *testing.T) {
 	if got == nil {
 		t.Fatal("got nil Decrypted")
 	}
-	var _ *Decrypted = got
+	_ = got
 }
 
 func TestPGP_Decrypt_DeterministicForSameInput(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -625,7 +634,7 @@ func TestPGP_Decrypt_DeterministicForSameInput(t *testing.T) {
 }
 
 func TestPGP_Decrypt_StringDataOnly(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -652,7 +661,7 @@ func TestPGP_Decrypt_StringDataOnly(t *testing.T) {
 }
 
 func TestPGP_Decrypt_DataOnly(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -675,7 +684,7 @@ func TestPGP_Decrypt_DataOnly(t *testing.T) {
 }
 
 func TestPGP_Decrypt_BothPresent(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -693,8 +702,8 @@ func TestPGP_Decrypt_BothPresent(t *testing.T) {
 	if len(got.StringData) == 0 {
 		t.Error("expected StringData to have entries")
 	}
-	if got.StringData["password"] != "my-secret-password" {
-		t.Errorf("StringData[password] = %q, want %q", got.StringData["password"], "my-secret-password")
+	if got.StringData[passwordField] != secretPassword {
+		t.Errorf("StringData[password] = %q, want %q", got.StringData[passwordField], secretPassword)
 	}
 	if got.Data["config"] == "" {
 		t.Error("Data[config] is empty")
@@ -702,7 +711,7 @@ func TestPGP_Decrypt_BothPresent(t *testing.T) {
 }
 
 func TestPGP_Decrypt_BothEmpty(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -713,11 +722,8 @@ func TestPGP_Decrypt_BothEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decrypt: %v", err)
 	}
-	if got == nil {
-		t.Fatal("expected non-nil result")
-	}
-	if len(got.Data) != 0 {
-		t.Errorf("expected empty Data, got %v", got.Data)
+	if got.Data != nil {
+		t.Errorf("expected nil Data, got %v", got.Data)
 	}
 	if len(got.StringData) != 0 {
 		t.Errorf("expected empty StringData, got %v", got.StringData)
@@ -725,7 +731,7 @@ func TestPGP_Decrypt_BothEmpty(t *testing.T) {
 }
 
 func TestPGP_Decrypt_MultipleStringDataEntries(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -748,7 +754,7 @@ func TestPGP_Decrypt_MultipleStringDataEntries(t *testing.T) {
 }
 
 func TestPGP_Decrypt_MultipleDataEntries(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -771,7 +777,7 @@ func TestPGP_Decrypt_MultipleDataEntries(t *testing.T) {
 }
 
 func TestPGP_Decrypt_PassphraseKey(t *testing.T) {
-	key := loadTestKey(t, "passphrase-key.asc")
+	key := loadTestKey(t, passphraseKeyFile)
 	d, err := NewPGP(key, []byte(testPassphrase))
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -783,14 +789,14 @@ func TestPGP_Decrypt_PassphraseKey(t *testing.T) {
 		t.Fatalf("Decrypt with passphrase key: %v", err)
 	}
 
-	if got.StringData["password"] != "my-secret-password" {
+	if got.StringData[passwordField] != secretPassword {
 		t.Errorf("StringData[password] = %q, want %q",
-			got.StringData["password"], "my-secret-password")
+			got.StringData[passwordField], secretPassword)
 	}
 }
 
 func TestPGP_Decrypt_NoEncryption_SopsStillWorks(t *testing.T) {
-	key := loadTestKey(t, "test-key.asc")
+	key := loadTestKey(t, testKeyFile)
 	d, err := NewPGP(key, nil)
 	if err != nil {
 		t.Fatalf("NewPGP: %v", err)
@@ -822,11 +828,11 @@ func TestPGP_Decrypt_NoEncryption_SopsStillWorks(t *testing.T) {
 		},
 		{
 			name:       "plaintext in both",
-			data:       map[string]string{"key3": "data-value"},
+			data:       map[string]string{"key3": dataValue},
 			stringData: map[string]string{"key4": "string-value"},
-			checkTop:   "both",
+			checkTop:   bothName,
 			wantKey:    "key3",
-			wantVal:    "data-value",
+			wantVal:    dataValue,
 		},
 	}
 	for _, tt := range tests {
@@ -845,9 +851,9 @@ func TestPGP_Decrypt_NoEncryption_SopsStillWorks(t *testing.T) {
 				if got.StringData[tt.wantKey] != tt.wantVal {
 					t.Errorf("StringData[%q] = %q, want %q", tt.wantKey, got.StringData[tt.wantKey], tt.wantVal)
 				}
-			case "both":
-				if got.Data["key3"] != "data-value" {
-					t.Errorf("Data[key3] = %q, want %q", got.Data["key3"], "data-value")
+			case bothName:
+				if got.Data["key3"] != dataValue {
+					t.Errorf("Data[key3] = %q, want %q", got.Data["key3"], dataValue)
 				}
 				if got.StringData["key4"] != "string-value" {
 					t.Errorf("StringData[key4] = %q, want %q", got.StringData["key4"], "string-value")

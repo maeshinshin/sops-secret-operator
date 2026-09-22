@@ -22,23 +22,33 @@ import (
 	"time"
 )
 
+const (
+	emptySopsName       = "empty"
+	abcdSopsName        = "ABCD1234"
+	passphraseSopsFP    = "4326ED081E26332663FE62594484F990D5068F20"
+	aaaaSopsFP          = "AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111"
+	anySopsFP           = "ANY"
+	invalidJSONSopsName = "invalid json"
+	encAaa              = "enc-aaa"
+)
+
 func TestNormalizeFP(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
 		want string
 	}{
-		{name: "empty", in: "", want: ""},
-		{name: "no whitespace", in: "ABCD1234", want: "ABCD1234"},
-		{name: "lowercase", in: "abcd1234", want: "ABCD1234"},
-		{name: "mixed case", in: "AbCd1234", want: "ABCD1234"},
-		{name: "single space", in: "AB CD1234", want: "ABCD1234"},
-		{name: "multiple spaces", in: "A B C D 1 2 3 4", want: "ABCD1234"},
-		{name: "leading space", in: " ABCD1234", want: "ABCD1234"},
-		{name: "trailing space", in: "ABCD1234 ", want: "ABCD1234"},
-		{name: "tab and newline", in: "AB\tCD\n1234", want: "ABCD1234"},
-		{name: "full fingerprint formatted", in: "4326ED081E26332663FE62594484F990D5068F20", want: "4326ED081E26332663FE62594484F990D5068F20"},
-		{name: "full fingerprint with spaces", in: "4326 ED08 1E26 3326 63FE 6259 4484 F990 D506 8F20", want: "4326ED081E26332663FE62594484F990D5068F20"},
+		{name: emptySopsName, in: "", want: ""},
+		{name: "no whitespace", in: abcdSopsName, want: abcdSopsName},
+		{name: "lowercase", in: "abcd1234", want: abcdSopsName},
+		{name: "mixed case", in: "AbCd1234", want: abcdSopsName},
+		{name: "single space", in: "AB CD1234", want: abcdSopsName},
+		{name: "multiple spaces", in: "A B C D 1 2 3 4", want: abcdSopsName},
+		{name: "leading space", in: " ABCD1234", want: abcdSopsName},
+		{name: "trailing space", in: "ABCD1234 ", want: abcdSopsName},
+		{name: "tab and newline", in: "AB\tCD\n1234", want: abcdSopsName},
+		{name: "full fingerprint formatted", in: passphraseSopsFP, want: passphraseSopsFP},
+		{name: "full fingerprint with spaces", in: "4326 ED08 1E26 3326 63FE 6259 4484 F990 D506 8F20", want: passphraseSopsFP},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -53,7 +63,7 @@ func TestFindPGPRecipient(t *testing.T) {
 	meta := &MetaWithPGP{
 		Meta: Meta{MAC: "mac", Version: "3.13.3"},
 		PGP: []PGPRecipient{
-			{CreatedAt: time.Now(), Enc: "enc-aaa", FP: "AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111"},
+			{CreatedAt: time.Now(), Enc: encAaa, FP: aaaaSopsFP},
 			{CreatedAt: time.Now(), Enc: "enc-bbb", FP: "BBBB2222BBBB2222BBBB2222BBBB2222BBBB2222"},
 			{CreatedAt: time.Now(), Enc: "enc-ccc", FP: "CCCC3333CCCC3333CCCC3333CCCC3333CCCC3333"},
 		},
@@ -64,13 +74,13 @@ func TestFindPGPRecipient(t *testing.T) {
 		fingerprint string
 		want        string
 	}{
-		{name: "exact match first", fingerprint: "AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111", want: "enc-aaa"},
+		{name: "exact match first", fingerprint: aaaaSopsFP, want: encAaa},
 		{name: "exact match middle", fingerprint: "BBBB2222BBBB2222BBBB2222BBBB2222BBBB2222", want: "enc-bbb"},
 		{name: "exact match last", fingerprint: "CCCC3333CCCC3333CCCC3333CCCC3333CCCC3333", want: "enc-ccc"},
-		{name: "lowercase match", fingerprint: "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111", want: "enc-aaa"},
-		{name: "uppercase match", fingerprint: "AAAA1111AAAA1111AAAA1111AAAA1111AAAA1111", want: "enc-aaa"},
-		{name: "with spaces match", fingerprint: "AAAA 1111 AAAA 1111 AAAA 1111 AAAA 1111 AAAA 1111", want: "enc-aaa"},
-		{name: "mixed case and spaces", fingerprint: "aaaa 1111 aaaa 1111 aaaa 1111 aaaa 1111 aaaa 1111", want: "enc-aaa"},
+		{name: "lowercase match", fingerprint: "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111", want: encAaa},
+		{name: "uppercase match", fingerprint: aaaaSopsFP, want: encAaa},
+		{name: "with spaces match", fingerprint: "AAAA 1111 AAAA 1111 AAAA 1111 AAAA 1111 AAAA 1111", want: encAaa},
+		{name: "mixed case and spaces", fingerprint: "aaaa 1111 aaaa 1111 aaaa 1111 aaaa 1111 aaaa 1111", want: encAaa},
 		{name: "not found", fingerprint: "DDDD4444DDDD4444DDDD4444DDDD4444DDDD4444", want: ""},
 		{name: "empty fingerprint", fingerprint: "", want: ""},
 		{name: "partial match", fingerprint: "AAAA1111", want: ""},
@@ -93,9 +103,9 @@ func TestFindPGPRecipient_EmptyMeta(t *testing.T) {
 		fp   string
 		want string
 	}{
-		{name: "nil meta", meta: nil, fp: "ANY", want: ""},
-		{name: "empty pgp list", meta: &MetaWithPGP{}, fp: "ANY", want: ""},
-		{name: "nil pgp slice", meta: &MetaWithPGP{PGP: nil}, fp: "ANY", want: ""},
+		{name: "nil meta", meta: nil, fp: anySopsFP, want: ""},
+		{name: "empty pgp list", meta: &MetaWithPGP{}, fp: anySopsFP, want: ""},
+		{name: "nil pgp slice", meta: &MetaWithPGP{PGP: nil}, fp: anySopsFP, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -138,12 +148,12 @@ func TestParseMeta(t *testing.T) {
 			},
 		},
 		{
-			name:    "invalid json",
+			name:    invalidJSONSopsName,
 			raw:     `{invalid}`,
 			wantErr: true,
 		},
 		{
-			name:    "empty",
+			name:    emptySopsName,
 			raw:     ``,
 			wantErr: true,
 		},
@@ -205,7 +215,7 @@ func TestParseMetaWithPGP(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "invalid json",
+			name:    invalidJSONSopsName,
 			raw:     `{broken`,
 			wantErr: true,
 		},
@@ -230,7 +240,7 @@ func TestMeta_JSONRoundtrip(t *testing.T) {
 	}{
 		{name: "single pgp", raw: `{"lastmodified":"2026-09-08T15:33:32Z","mac":"m","version":"v","pgp":[{"fp":"A","enc":"e"}]}`},
 		{name: "multiple pgp", raw: `{"lastmodified":"2026-09-08T15:33:32Z","mac":"m","version":"v","pgp":[{"fp":"A","enc":"a"},{"fp":"B","enc":"b"},{"fp":"C","enc":"c"}]}`},
-		{name: "full fingerprint pgp", raw: `{"lastmodified":"2026-09-08T15:33:32Z","mac":"ENC[AES256_GCM,data:x,iv:y,tag:z,type:str]","version":"3.13.3","pgp":[{"created_at":"2026-09-08T15:33:32Z","fp":"4326ED081E26332663FE62594484F990D5068F20","enc":"-----BEGIN PGP MESSAGE-----\n-----END PGP MESSAGE-----"}]}`},
+		{name: "full fingerprint pgp", raw: `{"lastmodified":"2026-09-08T15:33:32Z","mac":"ENC[AES256_GCM,data:x,iv:y,tag:z,type:str]","version":"3.13.3","pgp":[{"created_at":"2026-09-08T15:33:32Z","fp":"` + passphraseSopsFP + `","enc":"-----BEGIN PGP MESSAGE-----\n-----END PGP MESSAGE-----"}]}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -53,7 +53,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.Error(err, "creating decryptor")
 		r.setKeyAvailableCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonDecryptError, err.Error())
 		r.setReadyCondition(ss)
-		r.applyStatusBestEffort(ctx, ss, logger)
+		r.applyStatusBestEffort(ctx, ss)
 		return ctrl.Result{}, err
 	}
 
@@ -69,7 +69,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.Error(err, "decrypting sops data")
 		r.setSecretSyncedCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonDecryptError, err.Error())
 		r.setReadyCondition(ss)
-		r.applyStatusBestEffort(ctx, ss, logger)
+		r.applyStatusBestEffort(ctx, ss)
 		return ctrl.Result{}, err
 	}
 
@@ -77,7 +77,7 @@ func (r *SopsSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.Error(err, "applying secret")
 		r.setSecretSyncedCondition(ss, metav1.ConditionFalse, sopsv1alpha1.ReasonApplyFailed, err.Error())
 		r.setReadyCondition(ss)
-		r.applyStatusBestEffort(ctx, ss, logger)
+		r.applyStatusBestEffort(ctx, ss)
 		return ctrl.Result{}, err
 	}
 

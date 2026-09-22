@@ -20,9 +20,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	sopsv1alpha1 "github.com/maeshinshin/sops-secret-operator/api/v1alpha1"
 )
@@ -76,7 +76,8 @@ func (r *SopsSecretReconciler) applyStatus(ctx context.Context, ss *sopsv1alpha1
 	return nil
 }
 
-func (r *SopsSecretReconciler) applyStatusBestEffort(ctx context.Context, ss *sopsv1alpha1.SopsSecret, logger logr.Logger) {
+func (r *SopsSecretReconciler) applyStatusBestEffort(ctx context.Context, ss *sopsv1alpha1.SopsSecret) {
+	logger := log.FromContext(ctx)
 	if err := r.applyStatus(ctx, ss); err != nil {
 		logger.Error(err, "updating status")
 	}

@@ -41,11 +41,12 @@ import (
 )
 
 var (
-	ctx       context.Context
-	cancel    context.CancelFunc
-	testEnv   *envtest.Environment
-	cfg       *rest.Config
-	k8sClient client.Client
+	ctx           context.Context
+	cancel        context.CancelFunc
+	testEnv       *envtest.Environment
+	cfg           *rest.Config
+	k8sClient     client.Client
+	namespaceName = "default"
 )
 
 func TestControllers(t *testing.T) {
@@ -128,8 +129,8 @@ func newNamespacedName(name, namespace string) types.NamespacedName {
 	return types.NamespacedName{Name: name, Namespace: namespace}
 }
 
-func newObjectMeta(name, namespace string) metav1.ObjectMeta {
-	return metav1.ObjectMeta{Name: name, Namespace: namespace}
+func newObjectMeta(name string) metav1.ObjectMeta {
+	return metav1.ObjectMeta{Name: name, Namespace: namespaceName}
 }
 
 func cleanupResource(obj client.Object) {

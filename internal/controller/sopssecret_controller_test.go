@@ -32,6 +32,8 @@ import (
 	sopsv1alpha1 "github.com/maeshinshin/sops-secret-operator/api/v1alpha1"
 )
 
+const pgpKeyField = "pgp.asc"
+
 var _ = Describe("SopsSecret Controller", func() {
 	const (
 		pgpKeyName    = "test-pgp-key"
@@ -43,20 +45,20 @@ var _ = Describe("SopsSecret Controller", func() {
 
 	newPGPKey := func(data string) *corev1.Secret {
 		return &corev1.Secret{
-			ObjectMeta: newObjectMeta(pgpKeyName, namespaceName),
-			Data:       map[string][]byte{"pgp.asc": []byte(data)},
+			ObjectMeta: newObjectMeta(pgpKeyName),
+			Data:       map[string][]byte{pgpKeyField: []byte(data)},
 		}
 	}
 
 	newSopsSecret := func() *sopsv1alpha1.SopsSecret {
 		return &sopsv1alpha1.SopsSecret{
-			ObjectMeta: newObjectMeta(resourceName, namespaceName),
+			ObjectMeta: newObjectMeta(resourceName),
 			Spec: sopsv1alpha1.SopsSecretSpec{
 				Decryption: sopsv1alpha1.DecryptionSource{
 					PGP: &sopsv1alpha1.PGPConfig{
 						KeyRef: sopsv1alpha1.SecretKeySelector{
 							Name: pgpKeyName,
-							Key:  "pgp.asc",
+							Key:  pgpKeyField,
 						},
 					},
 				},
@@ -339,8 +341,8 @@ var _ = Describe("SopsSecret Controller", func() {
 			keyData, err := os.ReadFile(filepath.Join("..", "decryption", "testdata", "test-key.asc"))
 			Expect(err).NotTo(HaveOccurred())
 			pgpKey = &corev1.Secret{
-				ObjectMeta: newObjectMeta("test-pgp-key-retain", namespaceName),
-				Data:       map[string][]byte{"pgp.asc": keyData},
+				ObjectMeta: newObjectMeta("test-pgp-key-retain"),
+				Data:       map[string][]byte{pgpKeyField: keyData},
 			}
 			Expect(k8sClient.Create(ctx, pgpKey)).To(Succeed())
 
@@ -353,13 +355,13 @@ var _ = Describe("SopsSecret Controller", func() {
 			Expect(json.Unmarshal(raw, &envelope)).To(Succeed())
 
 			sopssecret = &sopsv1alpha1.SopsSecret{
-				ObjectMeta: newObjectMeta(retainName, namespaceName),
+				ObjectMeta: newObjectMeta(retainName),
 				Spec: sopsv1alpha1.SopsSecretSpec{
 					Decryption: sopsv1alpha1.DecryptionSource{
 						PGP: &sopsv1alpha1.PGPConfig{
 							KeyRef: sopsv1alpha1.SecretKeySelector{
 								Name: "test-pgp-key-retain",
-								Key:  "pgp.asc",
+								Key:  pgpKeyField,
 							},
 						},
 					},
@@ -408,8 +410,8 @@ var _ = Describe("SopsSecret Controller", func() {
 			keyData, err := os.ReadFile(filepath.Join("..", "decryption", "testdata", "test-key.asc"))
 			Expect(err).NotTo(HaveOccurred())
 			pgpKey = &corev1.Secret{
-				ObjectMeta: newObjectMeta("test-pgp-key-delete", namespaceName),
-				Data:       map[string][]byte{"pgp.asc": keyData},
+				ObjectMeta: newObjectMeta("test-pgp-key-delete"),
+				Data:       map[string][]byte{pgpKeyField: keyData},
 			}
 			Expect(k8sClient.Create(ctx, pgpKey)).To(Succeed())
 
@@ -422,13 +424,13 @@ var _ = Describe("SopsSecret Controller", func() {
 			Expect(json.Unmarshal(raw, &envelope)).To(Succeed())
 
 			sopssecret = &sopsv1alpha1.SopsSecret{
-				ObjectMeta: newObjectMeta(deleteName, namespaceName),
+				ObjectMeta: newObjectMeta(deleteName),
 				Spec: sopsv1alpha1.SopsSecretSpec{
 					Decryption: sopsv1alpha1.DecryptionSource{
 						PGP: &sopsv1alpha1.PGPConfig{
 							KeyRef: sopsv1alpha1.SecretKeySelector{
 								Name: "test-pgp-key-delete",
-								Key:  "pgp.asc",
+								Key:  pgpKeyField,
 							},
 						},
 					},
