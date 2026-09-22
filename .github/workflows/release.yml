@@ -1,20 +1,13 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Tag version to release (e.g. v0.1.0)"
-        required: true
-        type: string
+  create:
+    tags:
+      - v*
 
 permissions:
   contents: write
   packages: write
-  pages: write
-  id-token: write
 
 jobs:
   release:
