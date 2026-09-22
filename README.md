@@ -1,135 +1,176 @@
 # sops-secret-operator
-// TODO(user): Add simple overview of use/purpose
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+Kubernetes operator that turns SOPS-encrypted `SopsSecret` resources into plain `Secret`s, with a ValidatingAdmissionWebhook enforcing read-permission boundaries on referenced keys.
 
-## Getting Started
+## Why
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+- Credentials stay encrypted in git while apps consume them as plain `Secret`s.
+- A user can only reference `Secret`s they already have `get` access to — no privilege escalation via the CRD, even across namespaces.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+## Prerequisites
 
-```sh
-make docker-build docker-push IMG=<some-registry>/sops-secret-operator:tag
-```
+- `gpg` and `sops` on your dev box
+- Cluster-admin for install
+- **cert-manager** on the cluster (the webhook's TLS certs come from it)
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+## Install
 
-**Install the CRDs into the cluster:**
+Versions below are pinned to `v0.1.0`; use the [latest release](https://github.com/maeshinshin/sops-secret-operator/releases) for newer.
 
 ```sh
+# Helm
+helm repo add sops-secret-operator https://maeshinshin.github.io/sops-secret-operator
+helm install sops-secret-operator sops-secret-operator/sops-secret-operator \
+  --namespace sops-secret-operator-system --create-namespace
+
+# Kustomize
 make install
+make deploy IMG=ghcr.io/maeshinshin/sops-secret-operator:v0.1.0
+
+# Raw manifests
+kubectl apply -f https://raw.githubusercontent.com/maeshinshin/sops-secret-operator/v0.1.0/dist/install.yaml
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+Verify: `kubectl -n sops-secret-operator-system get pods` shows the manager `Running`, and `kubectl get crd sopssecrets.sops.maesh.dev` is `Established`.
+
+## Features
+
+- SOPS decryption with PGP (passphrase-protected keys)
+- `DeletionPolicy: Delete | Retain`
+- `Type` and `Immutable` propagation
+- Cross-namespace `keyRef` with webhook-enforced authorization
+- Status conditions: `KeyAvailable`, `SecretSynced`, `Ready`
+
+## Usage
+
+The walkthrough uses `my-app` for both the key `Secret` and the `SopsSecret`, with shell variables `$MY_FINGERPRINT` and `$MY_PASSPHRASE` you fill in.
+
+### 1. Create the GPG key
+
+The operator requires a **passphrase-protected** private key. Use a strong passphrase — anyone with `get` on the key `Secret` can decrypt everything if the key has no passphrase.
 
 ```sh
-make deploy IMG=<some-registry>/sops-secret-operator:tag
+gpg --full-generate-key   # when prompted: RSA and RSA, 4096 bits, then passphrase
+
+gpg --list-secret-keys --with-fingerprint   # copy the 40-char fingerprint
+export MY_FINGERPRINT=...
+export MY_PASSPHRASE=...
+
+gpg --export-secret-keys --armor "$MY_FINGERPRINT" > pgp.key
+echo -n "$MY_PASSPHRASE" > passphrase.txt
+chmod 600 passphrase.txt
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+### 2. Apply the PGP key `Secret`
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+The two data key names (`pgp.key`, `passphrase`) are arbitrary — they just have to match step 4.
 
 ```sh
-kubectl apply -k config/samples/
+kubectl create namespace my-app
+
+kubectl create secret generic pgp-key \
+  --from-file=pgp.key=./pgp.key \
+  --from-file=passphrase=./passphrase.txt \
+  -n my-app
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+`--from-file=KEY=PATH`: left is the Secret data-key name, right is the file on disk.
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+### 3. Configure sops
+
+Put `.sops.yaml` at the root of your app repo (where the encrypted files live):
+
+```yaml
+creation_rules:
+  - path_regex: .*\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    pgp: MY_FINGERPRINT
+```
+
+Only `data` / `stringData` get encrypted; `apiVersion`, `kind`, `metadata`, `spec` stay plaintext so the file remains a valid Kubernetes manifest.
+
+### 4. Write and encrypt the `SopsSecret`
 
 ```sh
-kubectl delete -k config/samples/
+cat <<'EOF' > db-credentials.sopssecret.yaml
+apiVersion: sops.maesh.dev/v1alpha1
+kind: SopsSecret
+metadata:
+  name: db-credentials
+  namespace: my-app
+spec:
+  decryption:
+    pgp:
+      keyRef:
+        name: pgp-key
+        key: pgp.key
+        # namespace: security-team   # cross-namespace; the webhook checks get access
+      passphraseRef:
+        name: pgp-key
+        key: passphrase
+        # namespace: security-team
+stringData:
+  username: changeme   # replace with real values before encryption
+  password: replace-me
+EOF
+
+sops --encrypt --in-place db-credentials.sopssecret.yaml
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+`stringData` becomes `data` with `ENC[AES256_GCM,...]` values and a top-level `sops:` field carries the PGP-encrypted data key. Commit only the encrypted file.
+
+> `stringData` is for plaintext values. `data` is for pre-base64 values — the operator base64-decodes whatever is there (Kubernetes `Secret` semantics), so put plaintext in `stringData` to avoid surprises.
+
+### 5. Apply and verify
 
 ```sh
-make uninstall
+kubectl apply -f db-credentials.sopssecret.yaml
+
+kubectl get sopssecret db-credentials -n my-app -o jsonpath='{.status.conditions}' | jq .
+# expect Ready=True
+
+kubectl get secret db-credentials -n my-app -o yaml
+# data.password is base64 of the decrypted plaintext
 ```
 
-**UnDeploy the controller from the cluster:**
+### Cross-namespace key references
+
+See the commented-out alternatives in the step 4 example above. The webhook checks the requestor has `get` on the foreign Secret; users without that access are rejected at admission time.
+
+### Deletion policy
+
+```yaml
+apiVersion: sops.maesh.dev/v1alpha1
+kind: SopsSecret
+metadata:
+  name: db-credentials
+deletionPolicy: Retain        # sibling of metadata; default: Delete (cascade via OwnerReference)
+spec:
+  decryption: {...}
+stringData: {...}
+```
+
+`Retain` keeps the target `Secret` after the `SopsSecret` is deleted.
+
+## Security model
+
+The webhook performs a `SubjectAccessReview` for each referenced `Secret` against the requestor's `UserInfo`. A `SopsSecret` is rejected at admission time if the caller lacks `get` on any of its `keyRef` / `passphraseRef` targets. Read access to the generated target `Secret` is controlled by ordinary namespace RBAC.
+
+If something goes wrong: `kubectl describe sopssecret <name> -n <ns>` shows the failure `Reason` (`DecryptError`, `KeyUnavailable`, `ApplyFailed`).
+
+## Development
 
 ```sh
-make undeploy
+make test          # unit + envtest
+make test-e2e      # kind cluster + cert-manager
+make lint
+
+make manifests generate
+kubebuilder edit --plugins=helm/v2-alpha --force   # updates dist/chart
 ```
 
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/sops-secret-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/sops-secret-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+Tag pushes (e.g. `v0.1.0`) trigger `.github/workflows/release.yml` to build & push the image and publish the chart. CHANGELOG is managed by `release-please` on every push to `main`.
 
 ## License
 
-Copyright 2026 maeshinshin.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Apache License 2.0.

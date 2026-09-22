@@ -16,3 +16,4 @@ jobs:
         with:
           release-type: go
           package-name: sops-secret-operator
+          release-as: 0.1.0

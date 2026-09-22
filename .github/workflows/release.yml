@@ -1,8 +1,9 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*']
+  create:
+    tags:
+      - v*
 
 permissions:
   contents: write
@@ -22,6 +23,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install kubebuilder
+        run: |
+          curl -sSLo kubebuilder "https://go.kubebuilder.io/dl/latest/$(go env GOOS)/$(go env GOARCH)"
+          chmod +x kubebuilder
+          sudo mv kubebuilder /usr/local/bin/
+
+      - name: Generate chart
+        env:
+          IMG: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+        run: |
+          kubebuilder edit --plugins=helm/v2-alpha --force
+
       - name: Build and push image
         uses: docker/build-push-action@v7.4.0
         with:
@@ -31,12 +44,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Generate chart
-        env:
-          IMG: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-        run: |
-          kubebuilder edit --plugins=helm/v2-alpha --force
 
       - name: Release chart
         uses: helm/chart-releaser-action@v1.7.0
