@@ -1,19 +1,20 @@
 {
+  "bump-minor-pre-major": true,
   "initial-version": "0.1.0",
   "packages": {
     ".": {
       "releaseType": "go",
       "packageName": "sops-secret-operator",
       "changelogSections": [
-        {"type": "feat", "section": "Features"},
-        {"type": "fix", "section": "Bug Fixes"},
-        {"type": "perf", "section": "Performance"},
-        {"type": "refactor", "section": "Refactoring"},
-        {"type": "docs", "section": "Documentation"},
-        {"type": "test", "section": "Tests"},
-        {"type": "build", "section": "Build System"},
-        {"type": "ci", "section": "Continuous Integration"},
-        {"type": "chore", "section": "Chores", "hidden": true}
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug Fixes" },
+        { "type": "perf", "section": "Performance" },
+        { "type": "refactor", "section": "Refactoring" },
+        { "type": "docs", "section": "Documentation" },
+        { "type": "test", "section": "Tests" },
+        { "type": "build", "section": "Build System" },
+        { "type": "ci", "section": "Continuous Integration" },
+        { "type": "chore", "section": "Chores", "hidden": true }
       ]
     }
   }
