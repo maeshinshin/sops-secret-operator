@@ -101,10 +101,14 @@ metadata:
 spec:
   decryption:
     pgp:
-      keyRef:        { name: pgp-key, key: pgp.key }
-      # keyRef:        { name: shared-pgp-key, namespace: security-team, key: pgp.key }   # cross-namespace; the webhook checks get access
-      passphraseRef: { name: pgp-key, key: passphrase }
-      # passphraseRef: { name: shared-pgp-key, namespace: security-team, key: passphrase }
+      keyRef:
+        name: pgp-key
+        key: pgp.key
+        # namespace: security-team   # cross-namespace; the webhook checks get access
+      passphraseRef:
+        name: pgp-key
+        key: passphrase
+        # namespace: security-team
 stringData:
   username: changeme   # replace with real values before encryption
   password: replace-me
